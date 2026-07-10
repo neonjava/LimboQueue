@@ -60,20 +60,20 @@ public class LimboQueueVelocity {
         this.server.getEventManager().register(this, new VelocityMessageListener(this));
         this.server.getEventManager().register(this, this.queueManager);
 
-        // Start dummy TCP server on port 25567 to accept queue redirection connections
-        this.server.getScheduler().buildTask(this, () -> {
+        // Start dummy TCP server on port 25567 in a native Java thread to allow redirection to complete
+        new Thread(() -> {
             try (java.net.ServerSocket serverSocket = new java.net.ServerSocket(25567)) {
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         java.net.Socket socket = serverSocket.accept();
-                        // Just discard/close the socket immediately, Velocity only checks if port is listening
+                        // Close immediately; Velocity only requires socket to respond successfully
                         socket.close();
                     } catch (java.io.IOException ignored) {}
                 }
             } catch (java.io.IOException e) {
                 this.logger.error("Failed to start dummy redirection TCP server on port 25567", e);
             }
-        }).scheduleAsync();
+        }, "LimboQueue-RedirectionListener").start();
 
         // Schedule queue task ticker
         this.server.getScheduler().buildTask(this, () -> this.queueManager.tickQueue())
