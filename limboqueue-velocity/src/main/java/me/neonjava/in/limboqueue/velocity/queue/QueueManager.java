@@ -2,7 +2,6 @@ package me.neonjava.in.limboqueue.velocity.queue;
 
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
-import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerPing;
@@ -14,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import me.neonjava.in.limboqueue.velocity.LimboQueueVelocity;
+import net.elytrium.limboapi.api.event.LoginLimboRegisterEvent;
 import net.elytrium.limboapi.api.player.LimboPlayer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
@@ -94,26 +94,18 @@ public class QueueManager {
     }
 
     @Subscribe
-    public void onKickedFromServer(KickedFromServerEvent event) {
-        this.plugin.getLogger().info("KickedFromServerEvent fired for player: " + event.getPlayer().getUsername() + 
-            ", reason: " + event.getServerKickReason().map(Object::toString).orElse("none"));
-
-        Component reasonComponent = event.getServerKickReason().orElse(null);
-        if (isFullKickReason(reasonComponent)) {
-            Optional<RegisteredServer> queueServer = this.plugin.getServer().getServer("queue");
-            if (queueServer.isPresent()) {
-                this.plugin.getLogger().info("Redirecting " + event.getPlayer().getUsername() + " to dummy queue server!");
-                // Set the result to Redirect to the dummy queue server to keep the connection alive
-                event.setResult(KickedFromServerEvent.RedirectPlayer.create(queueServer.get()));
-                
-                // Immediately spawn the player in Limbo
+    public void onLoginLimboRegister(LoginLimboRegisterEvent event) {
+        event.setOnKickCallback((kickEvent) -> {
+            Component reasonComponent = kickEvent.getServerKickReason().orElse(null);
+            this.plugin.getLogger().info("Intercepted login kick callback for player: " + kickEvent.getPlayer().getUsername());
+            if (isFullKickReason(reasonComponent)) {
                 this.plugin.getServer().getScheduler().buildTask(this.plugin, () -> {
-                    queuePlayer(event.getPlayer());
+                    queuePlayer(kickEvent.getPlayer());
                 }).schedule();
-            } else {
-                this.plugin.getLogger().warn("Queue redirection target server 'queue' was not found in velocity.toml!");
+                return true; // Cleanly tell LimboAPI to cancel the kick and spawn in Limbo
             }
-        }
+            return false;
+        });
     }
 
     public void queuePlayer(Player player) {
