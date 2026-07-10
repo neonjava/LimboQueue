@@ -2,6 +2,7 @@ package me.neonjava.in.limboqueue.velocity.queue;
 
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerPing;
@@ -12,10 +13,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import me.neonjava.in.limboqueue.velocity.LimboQueueVelocity;
 import net.elytrium.limboapi.api.event.LoginLimboRegisterEvent;
 import net.elytrium.limboapi.api.player.LimboPlayer;
 import net.kyori.adventure.text.Component;
+import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 
 public class QueueManager {
@@ -28,6 +31,7 @@ public class QueueManager {
 
     private final Map<UUID, PlayerMetadata> metadataMap = new ConcurrentHashMap<>();
     private final Map<UUID, LimboPlayer> limboPlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, Function<KickedFromServerEvent, Boolean>> loginCallbacks = new ConcurrentHashMap<>();
 
     private boolean backendFull = false;
 
@@ -95,17 +99,47 @@ public class QueueManager {
 
     @Subscribe
     public void onLoginLimboRegister(LoginLimboRegisterEvent event) {
-        event.setOnKickCallback((kickEvent) -> {
+        Function<KickedFromServerEvent, Boolean> callback = (kickEvent) -> {
             Component reasonComponent = kickEvent.getServerKickReason().orElse(null);
             this.plugin.getLogger().info("Intercepted login kick callback for player: " + kickEvent.getPlayer().getUsername());
             if (isFullKickReason(reasonComponent)) {
                 this.plugin.getServer().getScheduler().buildTask(this.plugin, () -> {
                     queuePlayer(kickEvent.getPlayer());
                 }).schedule();
-                return true; // Cleanly tell LimboAPI to cancel the kick and spawn in Limbo
+                return true; // Cancel standard kick; send to Limbo
             }
             return false;
-        });
+        };
+
+        event.setOnKickCallback(callback);
+        this.loginCallbacks.put(event.getPlayer().getUniqueId(), callback);
+    }
+
+    @Subscribe
+    public void onServerPreConnect(ServerPreConnectEvent event) {
+        Player player = event.getPlayer();
+        Function<KickedFromServerEvent, Boolean> callback = this.loginCallbacks.get(player.getUniqueId());
+        if (callback != null) {
+            registerKickCallbackDynamically(player, callback);
+        }
+    }
+
+    private void registerKickCallbackDynamically(Player player, Function<KickedFromServerEvent, Boolean> callback) {
+        try {
+            Object limboApiInstance = this.plugin.getServer().getPluginManager()
+                    .getPlugin("limboapi")
+                    .flatMap(container -> container.getInstance())
+                    .orElse(null);
+            
+            if (limboApiInstance != null) {
+                java.lang.reflect.Method setKickCallbackMethod = limboApiInstance.getClass()
+                        .getMethod("setKickCallback", Player.class, Function.class);
+                setKickCallbackMethod.invoke(limboApiInstance, player, callback);
+                this.plugin.getLogger().info("Dynamically registered play-session kick callback for: " + player.getUsername());
+            }
+        } catch (Exception e) {
+            this.plugin.getLogger().error("Failed to dynamically register play-session kick callback via reflection", e);
+        }
     }
 
     public void queuePlayer(Player player) {
@@ -120,6 +154,7 @@ public class QueueManager {
     public void onDisconnect(DisconnectEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         this.metadataMap.remove(uuid);
+        this.loginCallbacks.remove(uuid);
         LimboPlayer lp = this.limboPlayers.remove(uuid);
         if (lp != null) {
             this.bypassQueue.remove(lp);
