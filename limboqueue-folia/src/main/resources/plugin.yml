@@ -1,0 +1,8 @@
+name: LimboQueueFolia
+version: 1.0.0
+main: me.neonjava.in.limboqueue.folia.LimboQueueFolia
+api-version: 1.20
+author: neonjava
+folia-supported: true
+depend:
+  - LuckPerms
