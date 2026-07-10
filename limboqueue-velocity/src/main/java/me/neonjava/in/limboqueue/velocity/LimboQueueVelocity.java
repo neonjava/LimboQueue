@@ -3,17 +3,12 @@ package me.neonjava.in.limboqueue.velocity;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
-import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
-import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
-import com.velocitypowered.api.proxy.server.ServerPing;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import net.elytrium.limboapi.api.Limbo;
 import net.elytrium.limboapi.api.LimboFactory;
@@ -64,6 +59,21 @@ public class LimboQueueVelocity {
         this.server.getChannelRegistrar().register(SYNC_CHANNEL);
         this.server.getEventManager().register(this, new VelocityMessageListener(this));
         this.server.getEventManager().register(this, this.queueManager);
+
+        // Start dummy TCP server on port 25567 to accept queue redirection connections
+        this.server.getScheduler().buildTask(this, () -> {
+            try (java.net.ServerSocket serverSocket = new java.net.ServerSocket(25567)) {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        java.net.Socket socket = serverSocket.accept();
+                        // Just discard/close the socket immediately, Velocity only checks if port is listening
+                        socket.close();
+                    } catch (java.io.IOException ignored) {}
+                }
+            } catch (java.io.IOException e) {
+                this.logger.error("Failed to start dummy redirection TCP server on port 25567", e);
+            }
+        }).scheduleAsync();
 
         // Schedule queue task ticker
         this.server.getScheduler().buildTask(this, () -> this.queueManager.tickQueue())
