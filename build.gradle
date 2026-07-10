@@ -1,0 +1,15 @@
+plugins {
+    id 'java'
+    id 'io.github.goooler.shadow' version '8.1.7' apply false
+}
+
+allprojects {
+    group = 'me.neonjava.in'
+    version = '1.0.0'
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://repo.papermc.io/repository/maven-public/' }
+        maven { url 'https://maven.elytrium.net/repo/' }
+    }
+}
