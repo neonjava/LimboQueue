@@ -2,7 +2,6 @@ package me.neonjava.in.limboqueue.velocity.queue;
 
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
-import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerPing;
@@ -14,7 +13,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import me.neonjava.in.limboqueue.velocity.LimboQueueVelocity;
+import net.elytrium.limboapi.api.event.LoginLimboRegisterEvent;
 import net.elytrium.limboapi.api.player.LimboPlayer;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 
 public class QueueManager {
 
@@ -76,26 +78,34 @@ public class QueueManager {
         }
     }
 
-    @Subscribe
-    public void onServerPreConnect(ServerPreConnectEvent event) {
-        Player player = event.getPlayer();
-        RegisteredServer target = event.getResult().getServer().orElse(null);
-        if (target == null) return;
-
-        checkBackendServerFull(target);
-
-        if (this.backendFull) {
-            PlayerMetadata meta = this.metadataMap.computeIfAbsent(player.getUniqueId(), PlayerMetadata::new);
-
-            // If the player does not have bypass, send them directly to Limbo
-            // By spawning them in Limbo, LimboAPI intercepts their connection stream and keeps them on the proxy.
-            if (!meta.bypass) {
-                this.plugin.getLogger().info("Intercepting connection for " + player.getUsername() + " and spawning them in Limbo queue.");
-                this.plugin.getServer().getScheduler().buildTask(this.plugin, () -> {
-                    queuePlayer(player);
-                }).schedule();
+    private boolean isFullKickReason(Component component) {
+        if (component == null) return false;
+        try {
+            String json = GsonComponentSerializer.gson().serialize(component);
+            this.plugin.getLogger().info("Parsing kick reason component JSON: " + json);
+            String lower = json.toLowerCase();
+            if (lower.contains("full") || lower.contains("max") || lower.contains("limit") || lower.contains("server_full") || lower.contains("disconnect.server_full")) {
+                return true;
             }
+        } catch (Exception e) {
+            this.plugin.getLogger().error("Error serializing kick reason component", e);
         }
+        return false;
+    }
+
+    @Subscribe
+    public void onLoginLimboRegister(LoginLimboRegisterEvent event) {
+        event.setOnKickCallback((kickEvent) -> {
+            Component reasonComponent = kickEvent.getServerKickReason().orElse(null);
+            this.plugin.getLogger().info("Intercepted login kick callback for player: " + kickEvent.getPlayer().getUsername());
+            if (isFullKickReason(reasonComponent)) {
+                this.plugin.getServer().getScheduler().buildTask(this.plugin, () -> {
+                    queuePlayer(kickEvent.getPlayer());
+                }).schedule();
+                return true; // Cancel standard kick; send to Limbo
+            }
+            return false;
+        });
     }
 
     public void queuePlayer(Player player) {
