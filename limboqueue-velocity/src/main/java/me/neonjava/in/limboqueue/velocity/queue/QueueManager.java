@@ -33,7 +33,7 @@ public class QueueManager {
     private final Map<UUID, LimboPlayer> limboPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, Function<KickedFromServerEvent, Boolean>> loginCallbacks = new ConcurrentHashMap<>();
 
-    private boolean backendFull = false;
+    private boolean backendFull = true; // Default to true for safety
 
     public QueueManager(LimboQueueVelocity plugin) {
         this.plugin = plugin;
@@ -230,8 +230,8 @@ public class QueueManager {
             if (nextPlayer != null) {
                 LimboPlayer finalPlayer = nextPlayer;
                 this.plugin.getServer().getScheduler().buildTask(this.plugin, () -> {
-                    finalPlayer.disconnect();
-                    finalPlayer.getProxyPlayer().createConnectionRequest(target).fireAndForget();
+                    // Transition the player from Limbo to the target server backend cleanly
+                    finalPlayer.disconnect(target);
                 }).schedule();
             }
         }
@@ -244,10 +244,10 @@ public class QueueManager {
                 ServerPing.Players pInfo = ping.getPlayers().get();
                 this.backendFull = pInfo.getOnline() >= pInfo.getMax();
             } else {
-                this.backendFull = false;
+                this.backendFull = true;
             }
         } catch (InterruptedException | ExecutionException e) {
-            this.backendFull = false;
+            this.backendFull = true; // Safe fallback to true on ping failure
         }
     }
 
