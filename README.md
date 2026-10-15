@@ -1,47 +1,20 @@
 # LimboQueue
 
-A modern, high-performance Minecraft proxy queue system built for **Velocity** and **Folia/Canvas** backend servers. It leverages the **LimboAPI** to transition queuing players into a lightweight spectator world, minimizing resource utilization on the proxy while enforcing a highly configurable, multi-tiered queue.
+Velocity and Folia queue system that places waiting players in a lightweight limbo world.
 
-## Features
+![Project workflow](docs/workflow.svg)
 
-- **Limbo Integration**: Queuing players reside inside a virtual spectacle world (End-theme void by default) rather than a physical server.
-- **Three-Tier Queue Priority**:
-  - **Bypass (Tier 1)**: Skips the queue entirely or jumps straight to the front of the line (configurable permission-based priority).
-  - **Ranks (Tier 2)**: Sorted dynamically by LuckPerms group weights. Higher-tier ranks jump ahead of lower-tier ranks.
-  - **Regular (Tier 3)**: Standard First-In, First-Out (FIFO) queue for normal players.
-- **Dynamic Stats Actionbar & Title**: Real-time position tracking, total queue size, and ETA statistics displayed on-screen.
-- **Cross-Server Syncing**: Syncs permissions asynchronously between the Folia backend and Velocity proxy using server plugin messaging, without requiring a shared MySQL database.
+## Workflow
 
-## Architecture
+1. Player joins proxy.
+2. Check backend capacity.
+3. Assign queue priority.
+4. Send player to backend when ready.
 
-```mermaid
-sequenceDiagram
-    actor Player
-    participant Proxy as Velocity Proxy (LimboQueue)
-    participant LP as LuckPerms
-    participant Backend as Folia Backend (Canvas)
+## Getting started
 
-    Player->>Proxy: Join proxy (port 25565)
-    Proxy->>Backend: Check if backend is full (online >= max)
-    alt Backend is Full
-        Proxy->>Player: Spawns in Virtual Limbo Spectator World
-        Proxy->>Backend: Send permission query package
-        Backend->>LP: Query player permissions asynchronously
-        LP-->>Backend: Return permissions & weights
-        Backend->>Proxy: Sync permission results package
-        Proxy->>Proxy: Add player to corresponding Queue Tier
-    else Backend has slots
-        Proxy->>Backend: Forward Player Connection
-    end
-```
+Build with `./gradlew build`. Install the Velocity and Folia modules in their matching servers.
 
-## Compilation
+## License
 
-Build the shadow jars for deployment:
-```bash
-./gradlew build
-```
-
-The compiled jars will be generated in:
-* Velocity Plugin: `limboqueue-velocity/build/libs/limboqueue-velocity-1.0.0.jar`
-* Folia/Canvas Plugin: `limboqueue-folia/build/libs/limboqueue-folia-1.0.0.jar`
+The project code is licensed under AGPL-3.0-only. See [LICENSE](LICENSE).
